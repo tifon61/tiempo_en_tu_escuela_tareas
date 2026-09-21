@@ -267,6 +267,10 @@
                         <p>En vez de comparar solo el total del período, se agrupan los buckets consecutivos con lluvia en "eventos" independientes (tolerando baches secos cortos) y se compara el total de cada estación evento por evento. Si un evento tiene una diferencia grande entre estaciones y coincide con una intervención de mantenimiento registrada, se marca junto al evento — si no coincide con ninguna, conviene revisarlo puntualmente.</p>
                     </div>
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
+                        <p class="font-bold text-white mb-1">Cortes de Transmisión</p>
+                        <p>Se agrupan los buckets consecutivos sin ningún dato (no llegó nada a ThingSpeak o Wunderground en esa ventana) en "cortes" independientes, y se cuenta cuántos hubo — a diferencia del % de Cobertura, que solo indica cuánto del período tiene datos pero no cuántos momentos de caída distintos representa esa falta.</p>
+                    </div>
+                    <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Historial de Mantenimiento</p>
                         <p>Registro de intervenciones (recalibraciones, cambios de sensor, limpieza, mudanzas) sobre cada estación. Si el período analizado incluye alguna, aparece en una tabla propia arriba de los gráficos — útil para explicar saltos o cambios de comportamiento que de otro modo parecerían fallas del sensor.</p>
                     </div>
@@ -413,7 +417,8 @@
             const b = buckets.get(k);
             return b.count > 0 ? +(b.sum / b.count).toFixed(2) : null;
         });
-        return { labels, chartData };
+        const hasData = labels.map(k => buckets.get(k).count > 0);
+        return { labels, chartData, hasData };
     }
 
     function wuTsKey(o) { return o.obsTimeUtc || o.obsTimeLocal; }
@@ -441,7 +446,8 @@
             const b = buckets.get(k);
             return b.count > 0 ? +(b.sum / b.count).toFixed(2) : null;
         });
-        return { labels, chartData };
+        const hasData = labels.map(k => buckets.get(k).count > 0);
+        return { labels, chartData, hasData };
     }
 
     function processStationData(allFeedsData, mult, startStr, endStr, isCampbell, resolution, excluded) {
@@ -586,6 +592,31 @@
         });
         if (!stationResult.hasData) return inc;
         return inc.map((v, i) => stationResult.hasData[i] ? v : null);
+    }
+
+    // ============================================================
+    // Cortes de transmisión: agrupa buckets consecutivos sin ningún dato
+    // (no llegó nada a ThingSpeak/Wunderground en esa ventana) en "cortes"
+    // independientes, para poder contar momentos de caída en vez de solo
+    // el porcentaje de cobertura del período.
+    // ============================================================
+    function contarCortesTransmision(labels, hasData) {
+        const cortes = [];
+        let inicio = null;
+        for (let i = 0; i < labels.length; i++) {
+            if (!hasData[i]) {
+                if (inicio === null) inicio = i;
+            } else if (inicio !== null) {
+                cortes.push({ startIdx: inicio, endIdx: i - 1 });
+                inicio = null;
+            }
+        }
+        if (inicio !== null) cortes.push({ startIdx: inicio, endIdx: labels.length - 1 });
+        return cortes.map(c => ({
+            inicioLabel: labels[c.startIdx],
+            finLabel: labels[c.endIdx],
+            buckets: c.endIdx - c.startIdx + 1,
+        }));
     }
 
     // ============================================================
@@ -1140,7 +1171,7 @@
                 fetchWURangeData(D_ILAPLATA.stationId, D_ILAPLATA.apiKey, startStr, endStr)
             ]);
 
-            let pruebaSeries, campSeries, dazaSeries, labels, totals = null, dayNight = null, outliers = [], acumSeries = null;
+            let pruebaSeries, campSeries, dazaSeries, labels, totals = null, dayNight = null, outliers = [], acumSeries = null, cortesTransmision = null;
 
             if (cfg.accumulated) {
                 const pruebaResult = processStationData([feedsPrueba], estacionPrueba.mult, startStr, endStr, true, res, excl.prueba);
@@ -1153,6 +1184,11 @@
                 dazaSeries = getIncrementSeriesMasked(dazaResult);
                 totals = { prueba: parseFloat(pruebaResult.total), camp: parseFloat(campResult.total), daza: parseFloat(dazaResult.total) };
                 acumSeries = { prueba: pruebaResult.chartData, camp: campResult.chartData, daza: dazaResult.chartData };
+                cortesTransmision = {
+                    prueba: contarCortesTransmision(labels, pruebaResult.hasData),
+                    camp: contarCortesTransmision(labels, campResult.hasData),
+                    daza: contarCortesTransmision(labels, dazaResult.hasData)
+                };
             } else {
                 const pruebaResult = processContinuousSeries(feedsPrueba.feeds, estacionPrueba.fields[varKey], startStr, endStr, res, excl.prueba);
                 const campResult = processContinuousSeries(feedsCampbell.feeds, cfg.campbellField, startStr, endStr, res, excl.camp);
@@ -1162,6 +1198,11 @@
                 pruebaSeries = pruebaResult.chartData;
                 campSeries = campResult.chartData;
                 dazaSeries = dazaResult.chartData;
+                cortesTransmision = {
+                    prueba: contarCortesTransmision(labels, pruebaResult.hasData),
+                    camp: contarCortesTransmision(labels, campResult.hasData),
+                    daza: contarCortesTransmision(labels, dazaResult.hasData)
+                };
 
                 if (varKey === 'temp') {
                     dayNight = {
@@ -1179,7 +1220,7 @@
                 outliers = computeOutliers(pruebaRaw, campRaw);
             }
 
-            report.variables[varKey] = { cfg, labels, prueba: pruebaSeries, camp: campSeries, daza: dazaSeries, acum: acumSeries, totals, dayNight, outliers, excludedCount: { prueba: excl.prueba.size, camp: excl.camp.size, daza: excl.daza.size } };
+            report.variables[varKey] = { cfg, labels, prueba: pruebaSeries, camp: campSeries, daza: dazaSeries, acum: acumSeries, totals, dayNight, outliers, cortesTransmision, excludedCount: { prueba: excl.prueba.size, camp: excl.camp.size, daza: excl.daza.size } };
         }
 
         lastReport = report;
@@ -1345,9 +1386,9 @@
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-4 mt-4 text-center border-t border-white/10 pt-4">
-                    <div><p class="card-title">Cobertura ${pruebaLabel}</p><p class="text-xl font-bold text-emerald-400">${compPrueba}%</p></div>
-                    <div><p class="card-title">Cobertura Campbell</p><p class="text-xl font-bold text-sky-400">${compCamp}%</p></div>
-                    <div><p class="card-title">Cobertura Daza</p><p class="text-xl font-bold text-red-400">${compDaza}%</p></div>
+                    <div><p class="card-title">Cobertura ${pruebaLabel}</p><p class="text-xl font-bold text-emerald-400">${compPrueba}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.prueba.length} corte(s) de transmisión</p></div>
+                    <div><p class="card-title">Cobertura Campbell</p><p class="text-xl font-bold text-sky-400">${compCamp}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.camp.length} corte(s) de transmisión</p></div>
+                    <div><p class="card-title">Cobertura Daza</p><p class="text-xl font-bold text-red-400">${compDaza}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.daza.length} corte(s) de transmisión</p></div>
                 </div>
                 ${excluidosTxt}
                 ${v.cfg.accumulated && v.totals ? `
