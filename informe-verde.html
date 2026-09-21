@@ -9,8 +9,8 @@
     <!-- Dependencias para el Zoom (Hammer.js para táctil y el plugin de zoom de Chart.js) -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
-    <!-- Librería para exportar a PDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Librería para exportar a PDF (generación directa, sin capturas de pantalla del DOM) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- Config del backend de QC (opcional — ver apps-script-qc/README.md) -->
     <script src="apps-script-qc/qc-config.js"></script>
@@ -75,13 +75,6 @@
 
         #loadingBox { display: none; }
         #reportBody { display: none; }
-
-        /* Ajustes para el renderizado del PDF */
-        .pdf-export-mode {
-            background-color: #0f172a !important;
-            padding: 20px;
-        }
-        .pdf-export-mode .no-print { display: none !important; }
     </style>
 </head>
 <body class="p-4 md:p-8" id="laboratorio-container">
@@ -1147,7 +1140,7 @@
                 fetchWURangeData(D_ILAPLATA.stationId, D_ILAPLATA.apiKey, startStr, endStr)
             ]);
 
-            let pruebaSeries, campSeries, dazaSeries, labels, totals = null, dayNight = null, outliers = [];
+            let pruebaSeries, campSeries, dazaSeries, labels, totals = null, dayNight = null, outliers = [], acumSeries = null;
 
             if (cfg.accumulated) {
                 const pruebaResult = processStationData([feedsPrueba], estacionPrueba.mult, startStr, endStr, true, res, excl.prueba);
@@ -1159,6 +1152,7 @@
                 campSeries = getIncrementSeriesMasked(campResult);
                 dazaSeries = getIncrementSeriesMasked(dazaResult);
                 totals = { prueba: parseFloat(pruebaResult.total), camp: parseFloat(campResult.total), daza: parseFloat(dazaResult.total) };
+                acumSeries = { prueba: pruebaResult.chartData, camp: campResult.chartData, daza: dazaResult.chartData };
             } else {
                 const pruebaResult = processContinuousSeries(feedsPrueba.feeds, estacionPrueba.fields[varKey], startStr, endStr, res, excl.prueba);
                 const campResult = processContinuousSeries(feedsCampbell.feeds, cfg.campbellField, startStr, endStr, res, excl.camp);
@@ -1185,7 +1179,7 @@
                 outliers = computeOutliers(pruebaRaw, campRaw);
             }
 
-            report.variables[varKey] = { cfg, labels, prueba: pruebaSeries, camp: campSeries, daza: dazaSeries, totals, dayNight, outliers, excludedCount: { prueba: excl.prueba.size, camp: excl.camp.size, daza: excl.daza.size } };
+            report.variables[varKey] = { cfg, labels, prueba: pruebaSeries, camp: campSeries, daza: dazaSeries, acum: acumSeries, totals, dayNight, outliers, excludedCount: { prueba: excl.prueba.size, camp: excl.camp.size, daza: excl.daza.size } };
         }
 
         lastReport = report;
@@ -1327,6 +1321,19 @@
                     <div class="chart-scrollbar-thumb" id="scrollbar-thumb-${varKey}"></div>
                 </div>
                 <div class="mb-6"></div>
+                ${v.cfg.accumulated ? `
+                <div class="mt-2 mb-6 pt-4 border-t border-white/10">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="text-sm font-bold text-slate-300"><i class="fa-solid fa-chart-area mr-2" style="color:${v.cfg.color}"></i>Precipitación Acumulada (${v.cfg.unit})</h4>
+                        <button onclick="resetChartZoom('${varKey}_acum')" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-colors no-print border border-slate-500"><i class="fa-solid fa-magnifying-glass-minus mr-1"></i>Restablecer Zoom</button>
+                    </div>
+                    <div class="relative w-full h-[280px]">
+                        <canvas id="chart-line-${varKey}_acum"></canvas>
+                    </div>
+                    <div class="chart-scrollbar-track no-print" id="scrollbar-${varKey}_acum" onmousedown="iniciarDragScrollbar('${varKey}_acum', event)" ontouchstart="iniciarDragScrollbar('${varKey}_acum', event)">
+                        <div class="chart-scrollbar-thumb" id="scrollbar-thumb-${varKey}_acum"></div>
+                    </div>
+                </div>` : ''}
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
                         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">${pruebaLabel} vs Campbell</h4>
@@ -1385,6 +1392,38 @@
                 }
             });
             actualizarScrollbar(varKey);
+
+            if (v.cfg.accumulated && v.acum) {
+                const acumKey = `${varKey}_acum`;
+                const ctxAcum = document.getElementById(`chart-line-${acumKey}`).getContext('2d');
+                chartInstances[acumKey] = new Chart(ctxAcum, {
+                    type: 'line',
+                    data: {
+                        labels: v.labels,
+                        datasets: [
+                            { label: pruebaLabel, data: v.acum.prueba, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', tension: 0.2, pointRadius: 0, borderWidth: 2, fill: true },
+                            { label: 'Campbell', data: v.acum.camp, borderColor: '#0ea5e9', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 },
+                            { label: 'Daza', data: v.acum.daza, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#cbd5e1' } },
+                            zoom: {
+                                pan: { enabled: true, mode: 'x', modifierKey: 'ctrl', onPanComplete: () => actualizarScrollbar(acumKey) },
+                                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoomComplete: () => actualizarScrollbar(acumKey) }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#94a3b8', maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        }
+                    }
+                });
+                actualizarScrollbar(acumKey);
+            }
         });
 
         document.getElementById('resumenList').innerHTML = resumen.map(t => `<li>${t}</li>`).join('');
@@ -1434,22 +1473,89 @@
         URL.revokeObjectURL(url);
     }
 
+    // Exportación a PDF generada directamente con jsPDF (texto nativo +
+    // bitmaps de los gráficos vía chart.toBase64Image()), en vez de una
+    // captura de pantalla del DOM (html2canvas) — esa vía renderizaba mal
+    // los <canvas> de Chart.js. Contenido: resumen ejecutivo y los gráficos,
+    // sin ficha técnica/tablas/glosario.
     function descargarPDF() {
-        const elemento = document.getElementById('laboratorio-container');
+        if (!lastReport) return;
+        if (typeof window.jspdf === 'undefined') {
+            alert('No se pudo cargar la librería de PDF. Revisá la conexión e intentá de nuevo.');
+            return;
+        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-        const opt = {
-            margin:       10,
-            filename:     `Informe_Laboratorio_${lastReport ? lastReport.estacionKey : 'EMA'}_${new Date().toISOString().slice(0,10)}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, logging: false },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const marginX = 15;
+        const marginBottom = 15;
+        const contentWidth = pageWidth - marginX * 2;
+        let y = 18;
 
-        elemento.classList.add('pdf-export-mode');
+        function ensureSpace(neededHeight) {
+            if (y + neededHeight > pageHeight - marginBottom) {
+                doc.addPage();
+                y = 18;
+            }
+        }
 
-        html2pdf().set(opt).from(elemento).save().then(() => {
-            elemento.classList.remove('pdf-export-mode');
+        doc.setFontSize(16);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.text(`Laboratorio de Análisis: ${lastReport.pruebaLabel}`, marginX, y);
+        y += 7;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(100);
+        const rangeLabel = `${lastReport.startStr.replace('T', ' ')} → ${lastReport.endStr.replace('T', ' ')}  |  Resolución: ${lastReport.res}`;
+        doc.text(rangeLabel, marginX, y);
+        y += 10;
+
+        doc.setTextColor(0);
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text('Resultados del Contraste', marginX, y);
+        y += 6;
+        doc.setFontSize(9.5);
+        doc.setFont(undefined, 'normal');
+
+        const resumenItems = Array.from(document.querySelectorAll('#resumenList li')).map(li => li.innerText);
+        resumenItems.forEach(item => {
+            const lineas = doc.splitTextToSize(`•  ${item}`, contentWidth);
+            ensureSpace(lineas.length * 5 + 2);
+            doc.text(lineas, marginX, y);
+            y += lineas.length * 5 + 3;
         });
+
+        y += 4;
+
+        // Un gráfico por cada instancia de Chart.js activa (incluye el
+        // acumulado de lluvia), en el orden en que se crearon.
+        Object.entries(chartInstances).forEach(([key, chart]) => {
+            const esAcum = key.endsWith('_acum');
+            const varKey = esAcum ? key.slice(0, -5) : key;
+            const cfg = lastReport.variables[varKey] ? lastReport.variables[varKey].cfg : null;
+            const titulo = cfg ? `${cfg.label}${esAcum ? ' — Acumulado' : ''} (${cfg.unit})` : key;
+
+            const imgWidth = contentWidth;
+            const imgHeight = imgWidth * (chart.height / chart.width);
+
+            ensureSpace(imgHeight + 12);
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(15, 23, 42);
+            doc.text(titulo, marginX, y);
+            y += 5;
+
+            const imgData = chart.toBase64Image('image/png', 1.0);
+            doc.addImage(imgData, 'PNG', marginX, y, imgWidth, imgHeight);
+            y += imgHeight + 8;
+        });
+
+        doc.save(`Informe_Laboratorio_${lastReport.estacionKey}_${new Date().toISOString().slice(0,10)}.pdf`);
     }
 </script>
 </body>
