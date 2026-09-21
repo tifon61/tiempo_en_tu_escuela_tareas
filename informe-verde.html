@@ -254,6 +254,10 @@
                         <p>Se promedian por separado las lecturas de horas de radiación solar máxima (11-17h) y de noche (23-05h). Si el sesgo de la estación bajo prueba es notablemente mayor de día que de noche, suele apuntar a sobrecalentamiento por ventilación o protección solar insuficiente en la garita, más que a un desvío general del sensor.</p>
                     </div>
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
+                        <p class="font-bold text-white mb-1">Eventos de Precipitación (solo Lluvia)</p>
+                        <p>En vez de comparar solo el total del período, se agrupan los buckets consecutivos con lluvia en "eventos" independientes (tolerando baches secos cortos) y se compara el total de cada estación evento por evento. Si un evento tiene una diferencia grande entre estaciones y coincide con una intervención de mantenimiento registrada, se marca junto al evento — si no coincide con ninguna, conviene revisarlo puntualmente.</p>
+                    </div>
+                    <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Historial de Mantenimiento</p>
                         <p>Registro de intervenciones (recalibraciones, cambios de sensor, limpieza, mudanzas) sobre cada estación. Si el período analizado incluye alguna, aparece en una tabla propia arriba de los gráficos — útil para explicar saltos o cambios de comportamiento que de otro modo parecerían fallas del sensor.</p>
                     </div>
@@ -332,6 +336,7 @@
         const start = new Date(startStr);
         const end = new Date(endStr);
         const buckets = new Map();
+        const dates = [];
         let current = new Date(start);
         const pad = (n) => n.toString().padStart(2, '0');
 
@@ -356,12 +361,13 @@
             }
 
             buckets.set(key, { sum: 0, count: 0, value: 0 });
+            dates.push(new Date(current));
 
             if (resolution === 'diario') current.setDate(current.getDate() + 1);
             else if (resolution === 'horario') current.setHours(current.getHours() + 1);
             else current.setMinutes(current.getMinutes() + 15);
         }
-        return { buckets, bucketByHour: resolution !== 'diario', resolution };
+        return { buckets, bucketByHour: resolution !== 'diario', resolution, dates };
     }
 
     function formatKey(dateObj, resolution) {
@@ -633,6 +639,106 @@
         const min = positive.reduce((a, b) => a[1] < b[1] ? a : b);
         if (min[1] <= 0 || max[1] / min[1] < 2) return null;
         return `El total de <strong>${max[0]}</strong> (${max[1].toFixed(1)} mm) es marcadamente superior al de <strong>${min[0]}</strong> (${min[1].toFixed(1)} mm). Revisar posibles falsos pulsos mecánicos o limpieza del balancín en el sensor.`;
+    }
+
+    // ============================================================
+    // Detección de eventos de precipitación: agrupa buckets consecutivos
+    // (con tolerancia de baches secos cortos) donde ALGUNA de las tres
+    // estaciones registró lluvia, para poder comparar evento por evento en
+    // vez de solo el total del período. La resolución usada es la misma que
+    // eligió el usuario para el informe (conviene "horario" o "crudo" para
+    // que los eventos queden bien delimitados).
+    // ============================================================
+    const UMBRAL_LLUVIA_MM = 0.05;
+    const TOLERANCIA_BACHE_SECO = 2; // buckets consecutivos sin lluvia que todavía no cierran el evento
+
+    function detectarEventosLluvia(labels, dates, pruebaSeries, campSeries, dazaSeries) {
+        const activo = labels.map((_, i) => {
+            const p = pruebaSeries[i], c = campSeries[i], d = dazaSeries[i];
+            return (p != null && p > UMBRAL_LLUVIA_MM) || (c != null && c > UMBRAL_LLUVIA_MM) || (d != null && d > UMBRAL_LLUVIA_MM);
+        });
+
+        const rangos = [];
+        let inicio = null, bache = 0;
+        for (let i = 0; i < labels.length; i++) {
+            if (activo[i]) {
+                if (inicio === null) inicio = i;
+                bache = 0;
+            } else if (inicio !== null) {
+                bache++;
+                if (bache > TOLERANCIA_BACHE_SECO) {
+                    rangos.push({ startIdx: inicio, endIdx: i - bache });
+                    inicio = null; bache = 0;
+                }
+            }
+        }
+        if (inicio !== null) rangos.push({ startIdx: inicio, endIdx: labels.length - 1 - bache });
+
+        return rangos.map(r => {
+            let sumP = 0, sumC = 0, sumD = 0;
+            for (let i = r.startIdx; i <= r.endIdx; i++) {
+                sumP += pruebaSeries[i] || 0;
+                sumC += campSeries[i] || 0;
+                sumD += dazaSeries[i] || 0;
+            }
+            return {
+                inicioLabel: labels[r.startIdx], finLabel: labels[r.endIdx],
+                inicioFecha: dates[r.startIdx], finFecha: dates[r.endIdx],
+                totalPrueba: +sumP.toFixed(2), totalCamp: +sumC.toFixed(2), totalDaza: +sumD.toFixed(2),
+            };
+        });
+    }
+
+    // Intervenciones de mantenimiento cuya fecha cae dentro de la ventana del evento.
+    // El mantenimiento solo tiene fecha (sin hora), así que se compara por día
+    // calendario contra el rango de días que abarca el evento — no por
+    // timestamp exacto, que casi nunca va a coincidir con eventos de pocas horas.
+    function metadataDeEvento(evento, eventosMantenimiento) {
+        const pad = (n) => n.toString().padStart(2, '0');
+        const toDayStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const diaInicio = toDayStr(evento.inicioFecha);
+        const diaFin = toDayStr(evento.finFecha);
+        return (eventosMantenimiento || []).filter(m => m.fecha && m.fecha >= diaInicio && m.fecha <= diaFin);
+    }
+
+    function eventosLluviaHtml(eventos, unit, pruebaLabel, eventosMantenimiento) {
+        if (eventos.length === 0) {
+            return `<p class="text-xs text-slate-500 mt-4">No se detectaron eventos de precipitación (&gt;${UMBRAL_LLUVIA_MM}mm) en este período.</p>`;
+        }
+        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'Daza', general: 'General' };
+        const filas = eventos.map((e, i) => {
+            const diffTxt = e.totalCamp > 0
+                ? `${((e.totalPrueba - e.totalCamp) / e.totalCamp * 100).toFixed(0)}%`
+                : (e.totalPrueba > 0 ? '+∞ (Campbell=0)' : 's/d');
+            const metadata = metadataDeEvento(e, eventosMantenimiento);
+            const metaTxt = metadata.length > 0
+                ? metadata.map(m => `<span class="pill pill-mid" title="${(m.descripcion || '').replace(/"/g, '&quot;')}"><i class="fa-solid fa-screwdriver mr-1"></i>${NOMBRES[m.estacion] || m.estacion}: ${m.tipo}</span>`).join(' ')
+                : '';
+            const grandeDivergencia = e.totalCamp > 0 && Math.abs(e.totalPrueba - e.totalCamp) / e.totalCamp > 0.5 && metadata.length === 0;
+            return `
+                <tr>
+                    <td class="num">${i + 1}</td>
+                    <td>${e.inicioLabel}</td>
+                    <td>${e.finLabel}</td>
+                    <td class="num">${e.totalPrueba.toFixed(1)} ${unit}</td>
+                    <td class="num">${e.totalCamp.toFixed(1)} ${unit}</td>
+                    <td class="num">${e.totalDaza.toFixed(1)} ${unit}</td>
+                    <td class="num ${grandeDivergencia ? 'text-amber-400 font-bold' : ''}">${diffTxt}</td>
+                    <td>${metaTxt}</td>
+                </tr>`;
+        }).join('');
+        return `
+            <div class="mt-4 border-t border-white/10 pt-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2"><i class="fa-solid fa-cloud-showers-heavy mr-1"></i>Eventos de Precipitación Detectados (${eventos.length})</h4>
+                <div class="overflow-x-auto">
+                <table>
+                    <thead><tr><th>#</th><th>Inicio</th><th>Fin</th><th>${pruebaLabel}</th><th>Campbell</th><th>Daza</th><th>Dif. vs Campbell</th><th>Mantenimiento</th></tr></thead>
+                    <tbody>${filas}</tbody>
+                </table>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">Un evento agrupa buckets consecutivos con lluvia en alguna estación, tolerando hasta ${TOLERANCIA_BACHE_SECO} buckets secos entre medio. Para que los eventos queden bien delimitados conviene generar el informe con resolución Horaria o Cruda.</p>
+            </div>
+        `;
     }
 
     // ============================================================
@@ -1062,10 +1168,21 @@
             const compDaza = completeness(v.daza);
 
             let rainWarning = null;
+            let eventosLluvia = [];
             if (v.cfg.accumulated && v.totals) {
                 resumen.push(`Registro hidrométrico: ${pruebaLabel} ${v.totals.prueba.toFixed(1)} mm | Campbell ${v.totals.camp.toFixed(1)} mm | Daza ${v.totals.daza.toFixed(1)} mm.`);
                 rainWarning = rainAnomalyWarning(v.totals, pruebaLabel);
                 if (rainWarning) recomendaciones.push(`Pluviometría: ${rainWarning}`);
+
+                const { dates: fechasBuckets } = createBuckets(report.startStr, report.endStr, report.res);
+                eventosLluvia = detectarEventosLluvia(v.labels, fechasBuckets, v.prueba, v.camp, v.daza);
+                if (eventosLluvia.length > 0) {
+                    resumen.push(`Se detectaron ${eventosLluvia.length} evento(s) de precipitación en el período — ver detalle evento por evento en la sección de Lluvia.`);
+                    const sinExplicar = eventosLluvia.filter(e => e.totalCamp > 0 && Math.abs(e.totalPrueba - e.totalCamp) / e.totalCamp > 0.5 && metadataDeEvento(e, report.eventosMantenimiento).length === 0);
+                    if (sinExplicar.length > 0) {
+                        recomendaciones.push(`Pluviometría: ${sinExplicar.length} evento(s) tienen una diferencia &gt;50% entre ${pruebaLabel} y Campbell sin ninguna intervención de mantenimiento registrada que lo explique — revisar esos eventos puntualmente (posible falso pulso, obstrucción, o lluvia real localizada si las estaciones no están muy cerca entre sí).`);
+                    }
+                }
             } else {
                 const lc = rLabel(statsCamp.r);
                 const sesgoTxt = statsCamp.bias != null
@@ -1126,6 +1243,7 @@
                     <div><p class="card-title">Total Daza</p><p class="text-xl font-bold text-red-400">${v.totals.daza.toFixed(1)} mm</p></div>
                 </div>` : ''}
                 ${rainWarning ? `<div class="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-300"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${rainWarning}</div>` : ''}
+                ${v.cfg.accumulated ? eventosLluviaHtml(eventosLluvia, v.cfg.unit, pruebaLabel, report.eventosMantenimiento) : ''}
                 ${varKey === 'temp' && v.dayNight ? dayNightBlock(v.dayNight, v.cfg.unit, pruebaLabel) : ''}
                 ${!v.cfg.accumulated ? outlierTableHtml(varKey, v.outliers, v.cfg.unit, pruebaLabel) : ''}
             `;
