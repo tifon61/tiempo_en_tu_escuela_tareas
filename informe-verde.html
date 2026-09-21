@@ -269,6 +269,14 @@
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Cortes de Transmisión</p>
                         <p>Se agrupan los buckets consecutivos sin ningún dato (no llegó nada a ThingSpeak o Wunderground en esa ventana) en "cortes" independientes, y se cuenta cuántos hubo — a diferencia del % de Cobertura, que solo indica cuánto del período tiene datos pero no cuántos momentos de caída distintos representa esa falta.</p>
+                        <p class="mt-2">Parámetros exactos que definen un corte:</p>
+                        <ul class="list-disc list-inside mt-1 space-y-1">
+                            <li><strong>Resolución del bucket</strong>: la misma que elegiste para el informe (diario/horario/crudo). Un corte a resolución diaria puede no verse a resolución horaria y viceversa.</li>
+                            <li><strong>Bucket "sin dato"</strong>: no llegó ninguna lectura cruda de esa estación (ni siquiera una) dentro de la ventana de tiempo de ese bucket, antes de promediar. No es que el valor haya dado 0 — literalmente no hay ningún registro con ese timestamp.</li>
+                            <li><strong>Sin tolerancia ni umbral mínimo</strong>: a diferencia de los Eventos de Precipitación (que toleran baches secos cortos), acá un único bucket vacío ya cuenta como un corte de 1 bucket — no hace falta que sea una caída larga.</li>
+                            <li><strong>Cada racha de buckets vacíos consecutivos = un corte</strong>: si vuelve a haber dato, ese corte se cierra; si el corte llega hasta el borde del período (Desde/Hasta), igual se cuenta completo.</li>
+                            <li><strong>Interacción con QC</strong>: un bucket cuyas únicas lecturas fueron marcadas y excluidas por Control de Calidad también cuenta como "sin dato" acá, aunque técnicamente algo haya llegado al servidor — el corte refleja lo que finalmente queda disponible para el análisis, no solo la transmisión cruda.</li>
+                        </ul>
                     </div>
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Historial de Mantenimiento</p>
