@@ -57,6 +57,22 @@
 
         .btn-mini { font-size: 0.7rem; padding: 0.25rem 0.55rem; border-radius: 6px; font-weight: 700; white-space: nowrap; }
 
+        /* Barra de scroll horizontal de los gráficos, para desplazarse en el
+           tiempo sin perder el nivel de zoom actual. Se muestra sola cuando
+           hay zoom aplicado (ver actualizarScrollbar). */
+        .chart-scrollbar-track {
+            position: relative; height: 10px; margin-top: 6px;
+            background: rgba(255,255,255,0.06); border-radius: 5px; cursor: pointer;
+            display: none;
+        }
+        .chart-scrollbar-thumb {
+            position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+            background: rgba(56,189,248,0.55); border-radius: 5px; cursor: grab;
+            min-width: 24px;
+        }
+        .chart-scrollbar-thumb:hover { background: rgba(56,189,248,0.75); }
+        .chart-scrollbar-thumb.dragging { cursor: grabbing; background: rgba(56,189,248,0.9); }
+
         #loadingBox { display: none; }
         #reportBody { display: none; }
 
@@ -146,11 +162,76 @@
             </div>
         </div>
 
+        <!-- Registrar intervención de mantenimiento (independiente de generar un informe) -->
+        <div class="glass p-6 rounded-2xl mb-8 no-print">
+            <button onclick="toggleFormMantenimiento()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wide"><i class="fa-solid fa-screwdriver mr-1"></i>Registrar intervención / mantenimiento</h3>
+                <i class="fa-solid fa-chevron-down text-slate-400" id="iconFormMantenimiento"></i>
+            </button>
+            <div id="formMantenimiento" style="display:none;" class="mt-4">
+                <div id="mantenimientoNoConfigurado" class="text-xs text-amber-300 mb-3" style="display:none;">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>Necesita el backend de QC configurado (ver aviso arriba) — es el mismo backend, una hoja aparte.
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Estación</label>
+                        <select id="mantEstacion" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                            <option value="verde">EMA Verde</option>
+                            <option value="blanca">EMA Blanca</option>
+                            <option value="campbell">Campbell</option>
+                            <option value="daza">Daza</option>
+                            <option value="general">General (predio/otro)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Fecha</label>
+                        <input type="date" id="mantFecha" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                    </div>
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Tipo</label>
+                        <select id="mantTipo" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                            <option>Recalibración</option>
+                            <option>Reemplazo de sensor</option>
+                            <option>Limpieza</option>
+                            <option>Mudanza/Reubicación</option>
+                            <option>Instalación</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Cargado por</label>
+                        <input type="text" id="mantCargadoPor" placeholder="Tu nombre" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Descripción</label>
+                    <textarea id="mantDescripcion" rows="2" placeholder="Ej: se recalibró el sensor de temperatura, offset de +0.5°C detectado en banco de pruebas." class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500"></textarea>
+                </div>
+                <div class="mt-3 flex items-center gap-3">
+                    <button onclick="registrarMantenimiento()" id="btnRegistrarMant" class="bg-orange-700 hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition-all font-bold text-sm">
+                        <i class="fa-solid fa-plus mr-1"></i>Registrar
+                    </button>
+                    <span id="mantFeedback" class="text-xs text-slate-400"></span>
+                </div>
+            </div>
+        </div>
+
         <div id="reportBody">
             <!-- Resumen ejecutivo -->
             <div class="glass p-6 rounded-2xl mb-8 border-l-4 border-sky-500">
                 <h3 class="text-sm font-bold text-sky-400 uppercase tracking-wide mb-3"><i class="fa-solid fa-clipboard-list mr-1"></i>Resultados del Contraste</h3>
                 <ul id="resumenList" class="text-sm text-slate-200 space-y-2 list-disc list-inside"></ul>
+            </div>
+
+            <!-- Historial de mantenimiento dentro del período analizado -->
+            <div id="mantenimientoSection" class="glass p-6 rounded-2xl mb-8 border-l-4 border-violet-500" style="display:none;">
+                <h3 class="text-sm font-bold text-violet-400 uppercase tracking-wide mb-3"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial de Mantenimiento en el Período</h3>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead><tr><th>Fecha</th><th>Estación</th><th>Tipo</th><th>Descripción</th><th>Cargado por</th></tr></thead>
+                        <tbody id="mantenimientoTbody"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div id="variablesContainer" class="space-y-8"></div>
@@ -187,6 +268,14 @@
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Separación diurna/nocturna (solo Temperatura)</p>
                         <p>Se promedian por separado las lecturas de horas de radiación solar máxima (11-17h) y de noche (23-05h). Si el sesgo de la estación bajo prueba es notablemente mayor de día que de noche, suele apuntar a sobrecalentamiento por ventilación o protección solar insuficiente en la garita, más que a un desvío general del sensor.</p>
+                    </div>
+                    <div class="md:col-span-2 border-t border-white/10 pt-4">
+                        <p class="font-bold text-white mb-1">Eventos de Precipitación (solo Lluvia)</p>
+                        <p>En vez de comparar solo el total del período, se agrupan los buckets consecutivos con lluvia en "eventos" independientes (tolerando baches secos cortos) y se compara el total de cada estación evento por evento. Si un evento tiene una diferencia grande entre estaciones y coincide con una intervención de mantenimiento registrada, se marca junto al evento — si no coincide con ninguna, conviene revisarlo puntualmente.</p>
+                    </div>
+                    <div class="md:col-span-2 border-t border-white/10 pt-4">
+                        <p class="font-bold text-white mb-1">Historial de Mantenimiento</p>
+                        <p>Registro de intervenciones (recalibraciones, cambios de sensor, limpieza, mudanzas) sobre cada estación. Si el período analizado incluye alguna, aparece en una tabla propia arriba de los gráficos — útil para explicar saltos o cambios de comportamiento que de otro modo parecerían fallas del sensor.</p>
                     </div>
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Sugerencias de Control de Calidad (QC)</p>
@@ -263,6 +352,7 @@
         const start = new Date(startStr);
         const end = new Date(endStr);
         const buckets = new Map();
+        const dates = [];
         let current = new Date(start);
         const pad = (n) => n.toString().padStart(2, '0');
 
@@ -287,12 +377,13 @@
             }
 
             buckets.set(key, { sum: 0, count: 0, value: 0 });
+            dates.push(new Date(current));
 
             if (resolution === 'diario') current.setDate(current.getDate() + 1);
             else if (resolution === 'horario') current.setHours(current.getHours() + 1);
             else current.setMinutes(current.getMinutes() + 15);
         }
-        return { buckets, bucketByHour: resolution !== 'diario', resolution };
+        return { buckets, bucketByHour: resolution !== 'diario', resolution, dates };
     }
 
     function formatKey(dateObj, resolution) {
@@ -567,6 +658,106 @@
     }
 
     // ============================================================
+    // Detección de eventos de precipitación: agrupa buckets consecutivos
+    // (con tolerancia de baches secos cortos) donde ALGUNA de las tres
+    // estaciones registró lluvia, para poder comparar evento por evento en
+    // vez de solo el total del período. La resolución usada es la misma que
+    // eligió el usuario para el informe (conviene "horario" o "crudo" para
+    // que los eventos queden bien delimitados).
+    // ============================================================
+    const UMBRAL_LLUVIA_MM = 0.05;
+    const TOLERANCIA_BACHE_SECO = 2; // buckets consecutivos sin lluvia que todavía no cierran el evento
+
+    function detectarEventosLluvia(labels, dates, pruebaSeries, campSeries, dazaSeries) {
+        const activo = labels.map((_, i) => {
+            const p = pruebaSeries[i], c = campSeries[i], d = dazaSeries[i];
+            return (p != null && p > UMBRAL_LLUVIA_MM) || (c != null && c > UMBRAL_LLUVIA_MM) || (d != null && d > UMBRAL_LLUVIA_MM);
+        });
+
+        const rangos = [];
+        let inicio = null, bache = 0;
+        for (let i = 0; i < labels.length; i++) {
+            if (activo[i]) {
+                if (inicio === null) inicio = i;
+                bache = 0;
+            } else if (inicio !== null) {
+                bache++;
+                if (bache > TOLERANCIA_BACHE_SECO) {
+                    rangos.push({ startIdx: inicio, endIdx: i - bache });
+                    inicio = null; bache = 0;
+                }
+            }
+        }
+        if (inicio !== null) rangos.push({ startIdx: inicio, endIdx: labels.length - 1 - bache });
+
+        return rangos.map(r => {
+            let sumP = 0, sumC = 0, sumD = 0;
+            for (let i = r.startIdx; i <= r.endIdx; i++) {
+                sumP += pruebaSeries[i] || 0;
+                sumC += campSeries[i] || 0;
+                sumD += dazaSeries[i] || 0;
+            }
+            return {
+                inicioLabel: labels[r.startIdx], finLabel: labels[r.endIdx],
+                inicioFecha: dates[r.startIdx], finFecha: dates[r.endIdx],
+                totalPrueba: +sumP.toFixed(2), totalCamp: +sumC.toFixed(2), totalDaza: +sumD.toFixed(2),
+            };
+        });
+    }
+
+    // Intervenciones de mantenimiento cuya fecha cae dentro de la ventana del evento.
+    // El mantenimiento solo tiene fecha (sin hora), así que se compara por día
+    // calendario contra el rango de días que abarca el evento — no por
+    // timestamp exacto, que casi nunca va a coincidir con eventos de pocas horas.
+    function metadataDeEvento(evento, eventosMantenimiento) {
+        const pad = (n) => n.toString().padStart(2, '0');
+        const toDayStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const diaInicio = toDayStr(evento.inicioFecha);
+        const diaFin = toDayStr(evento.finFecha);
+        return (eventosMantenimiento || []).filter(m => m.fecha && m.fecha >= diaInicio && m.fecha <= diaFin);
+    }
+
+    function eventosLluviaHtml(eventos, unit, pruebaLabel, eventosMantenimiento) {
+        if (eventos.length === 0) {
+            return `<p class="text-xs text-slate-500 mt-4">No se detectaron eventos de precipitación (&gt;${UMBRAL_LLUVIA_MM}mm) en este período.</p>`;
+        }
+        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'Daza', general: 'General' };
+        const filas = eventos.map((e, i) => {
+            const diffTxt = e.totalCamp > 0
+                ? `${((e.totalPrueba - e.totalCamp) / e.totalCamp * 100).toFixed(0)}%`
+                : (e.totalPrueba > 0 ? '+∞ (Campbell=0)' : 's/d');
+            const metadata = metadataDeEvento(e, eventosMantenimiento);
+            const metaTxt = metadata.length > 0
+                ? metadata.map(m => `<span class="pill pill-mid" title="${(m.descripcion || '').replace(/"/g, '&quot;')}"><i class="fa-solid fa-screwdriver mr-1"></i>${NOMBRES[m.estacion] || m.estacion}: ${m.tipo}</span>`).join(' ')
+                : '';
+            const grandeDivergencia = e.totalCamp > 0 && Math.abs(e.totalPrueba - e.totalCamp) / e.totalCamp > 0.5 && metadata.length === 0;
+            return `
+                <tr>
+                    <td class="num">${i + 1}</td>
+                    <td>${e.inicioLabel}</td>
+                    <td>${e.finLabel}</td>
+                    <td class="num">${e.totalPrueba.toFixed(1)} ${unit}</td>
+                    <td class="num">${e.totalCamp.toFixed(1)} ${unit}</td>
+                    <td class="num">${e.totalDaza.toFixed(1)} ${unit}</td>
+                    <td class="num ${grandeDivergencia ? 'text-amber-400 font-bold' : ''}">${diffTxt}</td>
+                    <td>${metaTxt}</td>
+                </tr>`;
+        }).join('');
+        return `
+            <div class="mt-4 border-t border-white/10 pt-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2"><i class="fa-solid fa-cloud-showers-heavy mr-1"></i>Eventos de Precipitación Detectados (${eventos.length})</h4>
+                <div class="overflow-x-auto">
+                <table>
+                    <thead><tr><th>#</th><th>Inicio</th><th>Fin</th><th>${pruebaLabel}</th><th>Campbell</th><th>Daza</th><th>Dif. vs Campbell</th><th>Mantenimiento</th></tr></thead>
+                    <tbody>${filas}</tbody>
+                </table>
+                </div>
+                <p class="text-xs text-slate-500 mt-2">Un evento agrupa buckets consecutivos con lluvia en alguna estación, tolerando hasta ${TOLERANCIA_BACHE_SECO} buckets secos entre medio. Para que los eventos queden bien delimitados conviene generar el informe con resolución Horaria o Cruda.</p>
+            </div>
+        `;
+    }
+
+    // ============================================================
     // Separación diurna / nocturna (solo temperatura, efecto radiación)
     // ============================================================
     const isDayHour = h => h >= 11 && h < 17;   // horas de radiación solar máxima
@@ -705,6 +896,101 @@
         }).then(r => r.json());
     }
 
+    // ============================================================
+    // Historial de mantenimiento (misma backend/token que QC, hoja aparte)
+    // ============================================================
+    function fetchMantenimiento(estacionFiltro) {
+        if (!qcConfigurado()) return Promise.resolve([]);
+        return new Promise((resolve) => {
+            const callbackName = "onMant_" + Date.now();
+            window[callbackName] = (data) => {
+                delete window[callbackName];
+                document.getElementById(callbackName + "_script")?.remove();
+                resolve(data && data.ok ? data.eventos : []);
+            };
+            const script = document.createElement("script");
+            script.id = callbackName + "_script";
+            let src = QC_APPS_SCRIPT_URL + "?callback=" + callbackName + "&token=" + encodeURIComponent(QC_APPS_SCRIPT_TOKEN) + "&recurso=mantenimiento";
+            if (estacionFiltro) src += "&estacion=" + encodeURIComponent(estacionFiltro);
+            script.src = src;
+            script.onerror = () => { delete window[callbackName]; resolve([]); };
+            document.body.appendChild(script);
+        });
+    }
+
+    function toggleFormMantenimiento() {
+        const form = document.getElementById('formMantenimiento');
+        const icon = document.getElementById('iconFormMantenimiento');
+        const visible = form.style.display !== 'none';
+        form.style.display = visible ? 'none' : 'block';
+        icon.classList.toggle('fa-chevron-down', visible);
+        icon.classList.toggle('fa-chevron-up', !visible);
+        if (!visible) {
+            document.getElementById('mantenimientoNoConfigurado').style.display = qcConfigurado() ? 'none' : 'block';
+            if (!document.getElementById('mantFecha').value) {
+                document.getElementById('mantFecha').value = new Date().toISOString().slice(0, 10);
+            }
+        }
+    }
+
+    async function registrarMantenimiento() {
+        if (!qcConfigurado()) { alert('El backend de QC/Mantenimiento todavía no está configurado (ver apps-script-qc/README.md).'); return; }
+        const estacion = document.getElementById('mantEstacion').value;
+        const fecha = document.getElementById('mantFecha').value;
+        const tipo = document.getElementById('mantTipo').value;
+        const descripcion = document.getElementById('mantDescripcion').value;
+        const cargadoPor = document.getElementById('mantCargadoPor').value;
+        if (!fecha) { alert('Elegí una fecha.'); return; }
+
+        const btn = document.getElementById('btnRegistrarMant');
+        const feedback = document.getElementById('mantFeedback');
+        btn.disabled = true;
+        feedback.textContent = 'Guardando...';
+
+        try {
+            const resp = await fetch(QC_APPS_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ accion: "agregar_mantenimiento", estacion, fecha, tipo, descripcion, cargadoPor, token: QC_APPS_SCRIPT_TOKEN }),
+            }).then(r => r.json());
+
+            if (resp && resp.ok) {
+                feedback.textContent = '✓ Registrado. Si ya generaste un informe que cubre esa fecha, volvé a generarlo para verlo en la tabla.';
+                document.getElementById('mantDescripcion').value = '';
+            } else {
+                feedback.textContent = 'Error: ' + (resp && resp.error ? resp.error : 'desconocido');
+            }
+        } catch (e) {
+            feedback.textContent = 'Error de conexión: ' + e.message;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function renderMantenimiento(eventos, startStr, endStr) {
+        const section = document.getElementById('mantenimientoSection');
+        const tbody = document.getElementById('mantenimientoTbody');
+        const start = new Date(startStr), end = new Date(endStr);
+
+        const enPeriodo = eventos
+            .filter(e => { const d = new Date(e.fecha); return !isNaN(d) && d >= start && d <= end; })
+            .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+        if (enPeriodo.length === 0) { section.style.display = 'none'; return []; }
+
+        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'Daza', general: 'General' };
+        tbody.innerHTML = enPeriodo.map(e => `
+            <tr>
+                <td>${e.fecha}</td>
+                <td>${NOMBRES[e.estacion] || e.estacion}</td>
+                <td>${e.tipo}</td>
+                <td>${e.descripcion || ''}</td>
+                <td>${e.cargadoPor || ''}</td>
+            </tr>`).join('');
+        section.style.display = 'block';
+        return enPeriodo;
+    }
+
     // Set de tsIso excluidos, por estación, para la variable actual.
     // qcFlagsPorVariable[varKey] = { prueba: Set, camp: Set, daza: Set }
     let qcFlagsPorVariable = {};
@@ -729,7 +1015,94 @@
     function resetChartZoom(varKey) {
         if (chartInstances[varKey]) {
             chartInstances[varKey].resetZoom();
+            actualizarScrollbar(varKey);
         }
+    }
+
+    // ============================================================
+    // Barra de scroll horizontal de los gráficos (aparece sola cuando hay
+    // zoom aplicado, para poder desplazarse en el tiempo sin perder el
+    // nivel de zoom). El eje X es una escala de categorías (labels), así
+    // que "min"/"max" de la escala son índices dentro de v.labels.
+    // ============================================================
+    function actualizarScrollbar(varKey) {
+        const chart = chartInstances[varKey];
+        const track = document.getElementById(`scrollbar-${varKey}`);
+        const thumb = document.getElementById(`scrollbar-thumb-${varKey}`);
+        if (!chart || !track || !thumb || !chart.scales.x) return;
+
+        const totalLabels = chart.data.labels.length;
+        const scaleMin = chart.scales.x.min;
+        const scaleMax = chart.scales.x.max;
+        const min = scaleMin != null ? scaleMin : 0;
+        const max = scaleMax != null ? scaleMax : totalLabels - 1;
+        const visibleCount = (max - min) + 1;
+
+        if (totalLabels <= 1 || visibleCount >= totalLabels) {
+            track.style.display = 'none';
+            return;
+        }
+        track.style.display = 'block';
+        const pct = Math.max(100 * visibleCount / totalLabels, 3);
+        const leftPct = Math.min(100 * min / totalLabels, 100 - pct);
+        thumb.style.width = pct + '%';
+        thumb.style.left = leftPct + '%';
+    }
+
+    function iniciarDragScrollbar(varKey, evStart) {
+        evStart.preventDefault();
+        const chart = chartInstances[varKey];
+        const track = document.getElementById(`scrollbar-${varKey}`);
+        const thumb = document.getElementById(`scrollbar-thumb-${varKey}`);
+        if (!chart || !chart.scales.x) return;
+
+        const totalLabels = chart.data.labels.length;
+        const scaleMin = chart.scales.x.min;
+        const scaleMax = chart.scales.x.max;
+        const startMin = scaleMin != null ? scaleMin : 0;
+        const startMax = scaleMax != null ? scaleMax : totalLabels - 1;
+        const visibleCount = startMax - startMin; // ancho de la ventana, en índices
+
+        const clientXInicial = evStart.touches ? evStart.touches[0].clientX : evStart.clientX;
+        const trackWidth = track.getBoundingClientRect().width;
+
+        // Click directo en el track (no en el thumb): centra la ventana ahí.
+        if (evStart.target === track) {
+            const rect = track.getBoundingClientRect();
+            const fracClick = (clientXInicial - rect.left) / rect.width;
+            let nuevoMin = Math.round(fracClick * totalLabels - visibleCount / 2);
+            nuevoMin = Math.max(0, Math.min(nuevoMin, totalLabels - 1 - visibleCount));
+            chart.options.scales.x.min = nuevoMin;
+            chart.options.scales.x.max = nuevoMin + visibleCount;
+            chart.update('none');
+            actualizarScrollbar(varKey);
+        }
+
+        thumb.classList.add('dragging');
+
+        function onMove(ev) {
+            const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+            const deltaIdx = Math.round(((clientX - clientXInicial) / trackWidth) * totalLabels);
+            let nuevoMin = startMin + deltaIdx;
+            let nuevoMax = nuevoMin + visibleCount;
+            if (nuevoMin < 0) { nuevoMin = 0; nuevoMax = visibleCount; }
+            if (nuevoMax > totalLabels - 1) { nuevoMax = totalLabels - 1; nuevoMin = nuevoMax - visibleCount; }
+            chart.options.scales.x.min = nuevoMin;
+            chart.options.scales.x.max = nuevoMax;
+            chart.update('none');
+            actualizarScrollbar(varKey);
+        }
+        function onUp() {
+            thumb.classList.remove('dragging');
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            window.removeEventListener('touchmove', onMove);
+            window.removeEventListener('touchend', onUp);
+        }
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onUp);
     }
 
     function toInputValue(date) {
@@ -760,10 +1133,10 @@
         document.getElementById('btnCSV').disabled = true;
         document.getElementById('btnPDF').disabled = true;
 
-        const puntosQC = await fetchQCFlags();
+        const [puntosQC, eventosMantenimiento] = await Promise.all([fetchQCFlags(), fetchMantenimiento()]);
         qcFlagsPorVariable = construirExclusionSets(puntosQC);
 
-        const report = { startStr, endStr, res, estacionKey, pruebaLabel: estacionPrueba.label, variables: {} };
+        const report = { startStr, endStr, res, estacionKey, pruebaLabel: estacionPrueba.label, eventosMantenimiento, variables: {} };
 
         for (const varKey of Object.keys(VARS)) {
             const cfg = VARS[varKey];
@@ -885,6 +1258,11 @@
         const rangeLabel = `${report.startStr.replace('T', ' ')} → ${report.endStr.replace('T', ' ')}`;
         resumen.push(`Estación bajo prueba: <strong>${pruebaLabel}</strong>. Período de integración: ${rangeLabel}. Base de estructuración matemática: ${report.res}.`);
 
+        const mantEnPeriodo = renderMantenimiento(report.eventosMantenimiento || [], report.startStr, report.endStr);
+        if (mantEnPeriodo.length > 0) {
+            resumen.push(`Se registraron <strong>${mantEnPeriodo.length}</strong> intervención(es) de mantenimiento durante este período — ver "Historial de Mantenimiento" arriba antes de interpretar saltos o cambios de comportamiento como fallas del sensor.`);
+        }
+
         Object.entries(report.variables).forEach(([varKey, v]) => {
             const statsCamp = pairStats(v.prueba, v.camp);
             const statsDaza = pairStats(v.prueba, v.daza);
@@ -893,10 +1271,21 @@
             const compDaza = completeness(v.daza);
 
             let rainWarning = null;
+            let eventosLluvia = [];
             if (v.cfg.accumulated && v.totals) {
                 resumen.push(`Registro hidrométrico: ${pruebaLabel} ${v.totals.prueba.toFixed(1)} mm | Campbell ${v.totals.camp.toFixed(1)} mm | Daza ${v.totals.daza.toFixed(1)} mm.`);
                 rainWarning = rainAnomalyWarning(v.totals, pruebaLabel);
                 if (rainWarning) recomendaciones.push(`Pluviometría: ${rainWarning}`);
+
+                const { dates: fechasBuckets } = createBuckets(report.startStr, report.endStr, report.res);
+                eventosLluvia = detectarEventosLluvia(v.labels, fechasBuckets, v.prueba, v.camp, v.daza);
+                if (eventosLluvia.length > 0) {
+                    resumen.push(`Se detectaron ${eventosLluvia.length} evento(s) de precipitación en el período — ver detalle evento por evento en la sección de Lluvia.`);
+                    const sinExplicar = eventosLluvia.filter(e => e.totalCamp > 0 && Math.abs(e.totalPrueba - e.totalCamp) / e.totalCamp > 0.5 && metadataDeEvento(e, report.eventosMantenimiento).length === 0);
+                    if (sinExplicar.length > 0) {
+                        recomendaciones.push(`Pluviometría: ${sinExplicar.length} evento(s) tienen una diferencia &gt;50% entre ${pruebaLabel} y Campbell sin ninguna intervención de mantenimiento registrada que lo explique — revisar esos eventos puntualmente (posible falso pulso, obstrucción, o lluvia real localizada si las estaciones no están muy cerca entre sí).`);
+                    }
+                }
             } else {
                 const lc = rLabel(statsCamp.r);
                 const sesgoTxt = statsCamp.bias != null
@@ -931,9 +1320,13 @@
                     <h3 class="text-lg font-bold text-white"><i class="fa-solid fa-chart-line mr-2" style="color:${v.cfg.color}"></i>${v.cfg.label} (${v.cfg.unit})</h3>
                     <button onclick="resetChartZoom('${varKey}')" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-colors no-print border border-slate-500"><i class="fa-solid fa-magnifying-glass-minus mr-1"></i>Restablecer Zoom</button>
                 </div>
-                <div class="relative w-full h-[280px] mb-6">
+                <div class="relative w-full h-[280px]">
                     <canvas id="chart-line-${varKey}"></canvas>
                 </div>
+                <div class="chart-scrollbar-track no-print" id="scrollbar-${varKey}" onmousedown="iniciarDragScrollbar('${varKey}', event)" ontouchstart="iniciarDragScrollbar('${varKey}', event)">
+                    <div class="chart-scrollbar-thumb" id="scrollbar-thumb-${varKey}"></div>
+                </div>
+                <div class="mb-6"></div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
                         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">${pruebaLabel} vs Campbell</h4>
@@ -957,6 +1350,7 @@
                     <div><p class="card-title">Total Daza</p><p class="text-xl font-bold text-red-400">${v.totals.daza.toFixed(1)} mm</p></div>
                 </div>` : ''}
                 ${rainWarning ? `<div class="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-300"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${rainWarning}</div>` : ''}
+                ${v.cfg.accumulated ? eventosLluviaHtml(eventosLluvia, v.cfg.unit, pruebaLabel, report.eventosMantenimiento) : ''}
                 ${varKey === 'temp' && v.dayNight ? dayNightBlock(v.dayNight, v.cfg.unit, pruebaLabel) : ''}
                 ${!v.cfg.accumulated ? outlierTableHtml(varKey, v.outliers, v.cfg.unit, pruebaLabel) : ''}
             `;
@@ -980,8 +1374,8 @@
                     plugins: {
                         legend: { labels: { color: '#cbd5e1' } },
                         zoom: {
-                            pan: { enabled: true, mode: 'x', modifierKey: 'ctrl' },
-                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+                            pan: { enabled: true, mode: 'x', modifierKey: 'ctrl', onPanComplete: () => actualizarScrollbar(varKey) },
+                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoomComplete: () => actualizarScrollbar(varKey) }
                         }
                     },
                     scales: {
@@ -990,6 +1384,7 @@
                     }
                 }
             });
+            actualizarScrollbar(varKey);
         });
 
         document.getElementById('resumenList').innerHTML = resumen.map(t => `<li>${t}</li>`).join('');

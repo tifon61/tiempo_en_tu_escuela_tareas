@@ -1,17 +1,25 @@
 /**
- * Backend de Google Apps Script para el Control de Calidad (QC) del
- * Laboratorio de Análisis de EMAs (informe-verde.html).
+ * Backend de Google Apps Script para el Control de Calidad (QC) y el
+ * Historial de Mantenimiento del Laboratorio de Análisis de EMAs
+ * (informe-verde.html).
  *
  * Es un backend INDEPENDIENTE del que usa el módulo de observaciones
  * (apps-script/Code.gs) — Sheet propia, deployment propio, token propio.
- * Guarda qué lecturas puntuales de las EMAs (Verde/Blanca/Campbell/Daza) se
- * marcaron como anómalas para excluirlas del análisis, y expone un GET para
- * que el informe las lea y las aplique antes de armar los gráficos/estadísticas.
+ *
+ * Guarda dos cosas, en dos hojas separadas de la misma Sheet:
+ * - QC_EMAs: qué lecturas puntuales de las EMAs (Verde/Blanca/Campbell/Daza)
+ *   se marcaron como anómalas, para excluirlas del análisis.
+ * - Mantenimiento_EMAs: intervenciones registradas sobre cada estación
+ *   (recalibración, cambio de sensor, limpieza, mudanza, etc.), para poder
+ *   explicar saltos o cambios de comportamiento en los gráficos.
+ *
+ * Expone un GET para que el informe lea ambas cosas y las aplique/muestre.
  *
  * Instrucciones de despliegue: ver apps-script-qc/README.md
  */
 
 var SHEET_NAME = "QC_EMAs";
+var SHEET_MANTENIMIENTO = "Mantenimiento_EMAs";
 
 // Token compartido simple (mismo mecanismo que apps-script/Code.gs). Se
 // configura en Project Settings > Script Properties (clave TOKEN).
@@ -30,17 +38,35 @@ var COLUMNAS = [
   { key: "fechaMarcado", header: "Fecha de marcado" },
 ];
 
-function getSheet_() {
+// Columnas de la hoja de mantenimiento, en orden.
+var COLUMNAS_MANTENIMIENTO = [
+  { key: "estacion", header: "Estación" },     // verde | blanca | campbell | daza | general
+  { key: "fecha", header: "Fecha" },            // YYYY-MM-DD, fecha de la intervención
+  { key: "tipo", header: "Tipo" },              // Recalibración | Reemplazo de sensor | Limpieza | Mudanza/Reubicación | Instalación | Otro
+  { key: "descripcion", header: "Descripción" },
+  { key: "cargadoPor", header: "Cargado por" },
+  { key: "fechaCarga", header: "Fecha de carga" },
+];
+
+function getSheetGenerica_(nombre, columnas) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME);
+  var sheet = ss.getSheetByName(nombre);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    sheet = ss.insertSheet(nombre);
   }
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(COLUMNAS.map(function (c) { return c.header; }));
+    sheet.appendRow(columnas.map(function (c) { return c.header; }));
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function getSheet_() {
+  return getSheetGenerica_(SHEET_NAME, COLUMNAS);
+}
+
+function getSheetMantenimiento_() {
+  return getSheetGenerica_(SHEET_MANTENIMIENTO, COLUMNAS_MANTENIMIENTO);
 }
 
 function claveFila_(estacion, variable, timestampIso) {
@@ -115,6 +141,40 @@ function desmarcarPunto_(body) {
   return { ok: true };
 }
 
+// Registra una intervención de mantenimiento. body: { estacion, fecha, tipo,
+// descripcion, cargadoPor }.
+function agregarMantenimiento_(body) {
+  if (!body.estacion || !body.fecha || !body.tipo) {
+    return { ok: false, error: "Faltan estacion/fecha/tipo para registrar la intervención." };
+  }
+  var sheet = getSheetMantenimiento_();
+  var fila = [
+    body.estacion,
+    body.fecha,
+    body.tipo,
+    body.descripcion || "",
+    body.cargadoPor || "",
+    new Date().toISOString(),
+  ];
+  sheet.appendRow(fila);
+  return { ok: true, fila: fila };
+}
+
+// Elimina una intervención de mantenimiento por número de fila (1-indexado,
+// tal cual lo devuelve el GET en "_fila"). Solo para corregir cargas erróneas.
+function borrarMantenimiento_(body) {
+  var numeroFila = parseInt(body.fila, 10);
+  if (!numeroFila || numeroFila < 2) {
+    return { ok: false, error: "Falta un número de fila válido para borrar." };
+  }
+  var sheet = getSheetMantenimiento_();
+  if (numeroFila > sheet.getLastRow()) {
+    return { ok: false, error: "No existe esa fila." };
+  }
+  sheet.deleteRow(numeroFila);
+  return { ok: true };
+}
+
 function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
     ContentService.MimeType.JSON
@@ -142,6 +202,12 @@ function doPost(e) {
     if (body.accion === "desmarcar") {
       return jsonOut_(desmarcarPunto_(body));
     }
+    if (body.accion === "agregar_mantenimiento") {
+      return jsonOut_(agregarMantenimiento_(body));
+    }
+    if (body.accion === "borrar_mantenimiento") {
+      return jsonOut_(borrarMantenimiento_(body));
+    }
     // Por defecto (o accion === "marcar"): marcar uno o varios puntos.
     return jsonOut_(marcarPuntos_(body));
   } catch (err) {
@@ -149,17 +215,32 @@ function doPost(e) {
   }
 }
 
-// GET: devuelve todos los puntos marcados (opcionalmente filtrados por
-// estacion/variable via query params) para que el informe los aplique.
-// Formato JSONP si viene ?callback=... (igual que el otro backend), porque
-// GitHub Pages + Apps Script no siempre negocian bien CORS para GET con
-// fetch() directo en todos los navegadores.
+// GET: por defecto devuelve los puntos de QC marcados (opcionalmente
+// filtrados por estacion/variable), igual que antes. Con
+// ?recurso=mantenimiento devuelve el historial de intervenciones en su
+// lugar. Formato JSONP si viene ?callback=... (igual que el otro backend),
+// porque GitHub Pages + Apps Script no siempre negocian bien CORS para GET
+// con fetch() directo en todos los navegadores.
 function doGet(e) {
   var callback = e.parameter.callback;
   try {
     var expectedToken = getToken_();
     if (expectedToken && e.parameter.token !== expectedToken) {
       return jsonpOut_({ ok: false, error: "Token inválido." }, callback);
+    }
+
+    if (e.parameter.recurso === "mantenimiento") {
+      var sheetM = getSheetMantenimiento_();
+      var valoresM = sheetM.getDataRange().getValues();
+      var eventos = [];
+      for (var j = 1; j < valoresM.length; j++) {
+        var filaM = valoresM[j];
+        var objM = { _fila: j + 1 };
+        COLUMNAS_MANTENIMIENTO.forEach(function (c, idx) { objM[c.key] = filaM[idx]; });
+        if (e.parameter.estacion && objM.estacion !== e.parameter.estacion) continue;
+        eventos.push(objM);
+      }
+      return jsonpOut_({ ok: true, eventos: eventos }, callback);
     }
 
     var sheet = getSheet_();

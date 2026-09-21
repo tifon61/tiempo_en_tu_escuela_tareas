@@ -1,17 +1,25 @@
-# Despliegue del backend de QC (Google Apps Script + Google Sheet)
+# Despliegue del backend de QC y Mantenimiento (Google Apps Script + Google Sheet)
 
 Backend **independiente** del de `apps-script/` (observaciones) — Sheet
-propia, deployment propio, token propio. Guarda qué lecturas puntuales de
-las EMAs (Verde/Blanca/Campbell/Daza) se marcaron como anómalas desde el
-Laboratorio de Análisis (`informe-verde.html`), para excluirlas del
-análisis la próxima vez que se genere el informe.
+propia, deployment propio, token propio. Guarda dos cosas, en dos hojas
+separadas de la misma Sheet:
+
+- **QC_EMAs**: qué lecturas puntuales de las EMAs (Verde/Blanca/Campbell/Daza)
+  se marcaron como anómalas desde el Laboratorio de Análisis
+  (`informe-verde.html`), para excluirlas del análisis la próxima vez que se
+  genere el informe.
+- **Mantenimiento_EMAs**: intervenciones registradas sobre cada estación
+  (recalibración, cambio de sensor, limpieza, mudanza, etc.), para poder
+  explicar en el propio informe saltos o cambios de comportamiento que de
+  otro modo parecerían fallas del sensor.
 
 ## 1. Crear la Google Sheet
 
 1. Andá a [sheets.google.com](https://sheets.google.com) y creá una planilla nueva,
    por ejemplo "LPO — QC EMAs".
-2. No hace falta crear ninguna hoja/columna a mano: el script crea la hoja
-   "QC_EMAs" con los encabezados la primera vez que se ejecuta.
+2. No hace falta crear ninguna hoja/columna a mano: el script crea las hojas
+   "QC_EMAs" y "Mantenimiento_EMAs" con sus encabezados la primera vez que
+   se ejecuta cada una.
 
 ## 2. Crear el proyecto de Apps Script
 
@@ -58,6 +66,12 @@ nueva acción), hay que ir a **Deploy > Manage deployments**, elegir la
 deployment activa, y usar el ícono de lápiz para crear una **nueva versión**
 (la URL no cambia entre versiones).
 
+**Si ya tenías este backend desplegado desde antes** de que se agregara el
+Historial de Mantenimiento: pegá el `Code.gs` actualizado de esta carpeta y
+creá una nueva versión del deployment (paso de arriba) — no hace falta
+tocar la Sheet a mano, la hoja "Mantenimiento_EMAs" se crea sola la primera
+vez que alguien registra una intervención.
+
 ## Cómo funciona desde el informe
 
 - **Sugerencias de outliers**: al generar el informe, por cada variable
@@ -75,3 +89,11 @@ deployment activa, y usar el ícono de lápiz para crear una **nueva versión**
   la lectura original (no por el bucket de tiempo mostrado en el gráfico),
   así que la marca es válida sin importar la resolución con la que se
   generó el informe cuando se marcó.
+- **Registrar mantenimiento**: el formulario "Registrar intervención /
+  mantenimiento" (siempre visible, no depende de generar un informe) manda
+  `accion: "agregar_mantenimiento"` a este mismo backend.
+- **Ver el historial**: al generar el informe se trae todo el historial y
+  se filtra a las intervenciones cuya fecha cae dentro del rango
+  Desde/Hasta elegido — aparecen en una tabla propia ("Historial de
+  Mantenimiento en el Período") arriba de los gráficos, y en el resumen
+  ejecutivo se avisa cuántas hubo.
