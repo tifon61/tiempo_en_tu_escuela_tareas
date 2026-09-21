@@ -57,6 +57,22 @@
 
         .btn-mini { font-size: 0.7rem; padding: 0.25rem 0.55rem; border-radius: 6px; font-weight: 700; white-space: nowrap; }
 
+        /* Barra de scroll horizontal de los gráficos, para desplazarse en el
+           tiempo sin perder el nivel de zoom actual. Se muestra sola cuando
+           hay zoom aplicado (ver actualizarScrollbar). */
+        .chart-scrollbar-track {
+            position: relative; height: 10px; margin-top: 6px;
+            background: rgba(255,255,255,0.06); border-radius: 5px; cursor: pointer;
+            display: none;
+        }
+        .chart-scrollbar-thumb {
+            position: absolute; top: 0; bottom: 0; left: 0; width: 100%;
+            background: rgba(56,189,248,0.55); border-radius: 5px; cursor: grab;
+            min-width: 24px;
+        }
+        .chart-scrollbar-thumb:hover { background: rgba(56,189,248,0.75); }
+        .chart-scrollbar-thumb.dragging { cursor: grabbing; background: rgba(56,189,248,0.9); }
+
         #loadingBox { display: none; }
         #reportBody { display: none; }
 
@@ -999,7 +1015,94 @@
     function resetChartZoom(varKey) {
         if (chartInstances[varKey]) {
             chartInstances[varKey].resetZoom();
+            actualizarScrollbar(varKey);
         }
+    }
+
+    // ============================================================
+    // Barra de scroll horizontal de los gráficos (aparece sola cuando hay
+    // zoom aplicado, para poder desplazarse en el tiempo sin perder el
+    // nivel de zoom). El eje X es una escala de categorías (labels), así
+    // que "min"/"max" de la escala son índices dentro de v.labels.
+    // ============================================================
+    function actualizarScrollbar(varKey) {
+        const chart = chartInstances[varKey];
+        const track = document.getElementById(`scrollbar-${varKey}`);
+        const thumb = document.getElementById(`scrollbar-thumb-${varKey}`);
+        if (!chart || !track || !thumb || !chart.scales.x) return;
+
+        const totalLabels = chart.data.labels.length;
+        const scaleMin = chart.scales.x.min;
+        const scaleMax = chart.scales.x.max;
+        const min = scaleMin != null ? scaleMin : 0;
+        const max = scaleMax != null ? scaleMax : totalLabels - 1;
+        const visibleCount = (max - min) + 1;
+
+        if (totalLabels <= 1 || visibleCount >= totalLabels) {
+            track.style.display = 'none';
+            return;
+        }
+        track.style.display = 'block';
+        const pct = Math.max(100 * visibleCount / totalLabels, 3);
+        const leftPct = Math.min(100 * min / totalLabels, 100 - pct);
+        thumb.style.width = pct + '%';
+        thumb.style.left = leftPct + '%';
+    }
+
+    function iniciarDragScrollbar(varKey, evStart) {
+        evStart.preventDefault();
+        const chart = chartInstances[varKey];
+        const track = document.getElementById(`scrollbar-${varKey}`);
+        const thumb = document.getElementById(`scrollbar-thumb-${varKey}`);
+        if (!chart || !chart.scales.x) return;
+
+        const totalLabels = chart.data.labels.length;
+        const scaleMin = chart.scales.x.min;
+        const scaleMax = chart.scales.x.max;
+        const startMin = scaleMin != null ? scaleMin : 0;
+        const startMax = scaleMax != null ? scaleMax : totalLabels - 1;
+        const visibleCount = startMax - startMin; // ancho de la ventana, en índices
+
+        const clientXInicial = evStart.touches ? evStart.touches[0].clientX : evStart.clientX;
+        const trackWidth = track.getBoundingClientRect().width;
+
+        // Click directo en el track (no en el thumb): centra la ventana ahí.
+        if (evStart.target === track) {
+            const rect = track.getBoundingClientRect();
+            const fracClick = (clientXInicial - rect.left) / rect.width;
+            let nuevoMin = Math.round(fracClick * totalLabels - visibleCount / 2);
+            nuevoMin = Math.max(0, Math.min(nuevoMin, totalLabels - 1 - visibleCount));
+            chart.options.scales.x.min = nuevoMin;
+            chart.options.scales.x.max = nuevoMin + visibleCount;
+            chart.update('none');
+            actualizarScrollbar(varKey);
+        }
+
+        thumb.classList.add('dragging');
+
+        function onMove(ev) {
+            const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+            const deltaIdx = Math.round(((clientX - clientXInicial) / trackWidth) * totalLabels);
+            let nuevoMin = startMin + deltaIdx;
+            let nuevoMax = nuevoMin + visibleCount;
+            if (nuevoMin < 0) { nuevoMin = 0; nuevoMax = visibleCount; }
+            if (nuevoMax > totalLabels - 1) { nuevoMax = totalLabels - 1; nuevoMin = nuevoMax - visibleCount; }
+            chart.options.scales.x.min = nuevoMin;
+            chart.options.scales.x.max = nuevoMax;
+            chart.update('none');
+            actualizarScrollbar(varKey);
+        }
+        function onUp() {
+            thumb.classList.remove('dragging');
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            window.removeEventListener('touchmove', onMove);
+            window.removeEventListener('touchend', onUp);
+        }
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onUp);
     }
 
     function toInputValue(date) {
@@ -1217,9 +1320,13 @@
                     <h3 class="text-lg font-bold text-white"><i class="fa-solid fa-chart-line mr-2" style="color:${v.cfg.color}"></i>${v.cfg.label} (${v.cfg.unit})</h3>
                     <button onclick="resetChartZoom('${varKey}')" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition-colors no-print border border-slate-500"><i class="fa-solid fa-magnifying-glass-minus mr-1"></i>Restablecer Zoom</button>
                 </div>
-                <div class="relative w-full h-[280px] mb-6">
+                <div class="relative w-full h-[280px]">
                     <canvas id="chart-line-${varKey}"></canvas>
                 </div>
+                <div class="chart-scrollbar-track no-print" id="scrollbar-${varKey}" onmousedown="iniciarDragScrollbar('${varKey}', event)" ontouchstart="iniciarDragScrollbar('${varKey}', event)">
+                    <div class="chart-scrollbar-thumb" id="scrollbar-thumb-${varKey}"></div>
+                </div>
+                <div class="mb-6"></div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
                         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">${pruebaLabel} vs Campbell</h4>
@@ -1267,8 +1374,8 @@
                     plugins: {
                         legend: { labels: { color: '#cbd5e1' } },
                         zoom: {
-                            pan: { enabled: true, mode: 'x', modifierKey: 'ctrl' },
-                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+                            pan: { enabled: true, mode: 'x', modifierKey: 'ctrl', onPanComplete: () => actualizarScrollbar(varKey) },
+                            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x', onZoomComplete: () => actualizarScrollbar(varKey) }
                         }
                     },
                     scales: {
@@ -1277,6 +1384,7 @@
                     }
                 }
             });
+            actualizarScrollbar(varKey);
         });
 
         document.getElementById('resumenList').innerHTML = resumen.map(t => `<li>${t}</li>`).join('');
