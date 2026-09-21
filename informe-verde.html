@@ -146,11 +146,76 @@
             </div>
         </div>
 
+        <!-- Registrar intervención de mantenimiento (independiente de generar un informe) -->
+        <div class="glass p-6 rounded-2xl mb-8 no-print">
+            <button onclick="toggleFormMantenimiento()" class="w-full flex items-center justify-between text-left">
+                <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wide"><i class="fa-solid fa-screwdriver mr-1"></i>Registrar intervención / mantenimiento</h3>
+                <i class="fa-solid fa-chevron-down text-slate-400" id="iconFormMantenimiento"></i>
+            </button>
+            <div id="formMantenimiento" style="display:none;" class="mt-4">
+                <div id="mantenimientoNoConfigurado" class="text-xs text-amber-300 mb-3" style="display:none;">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>Necesita el backend de QC configurado (ver aviso arriba) — es el mismo backend, una hoja aparte.
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Estación</label>
+                        <select id="mantEstacion" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                            <option value="verde">EMA Verde</option>
+                            <option value="blanca">EMA Blanca</option>
+                            <option value="campbell">Campbell</option>
+                            <option value="daza">Daza</option>
+                            <option value="general">General (predio/otro)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Fecha</label>
+                        <input type="date" id="mantFecha" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                    </div>
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Tipo</label>
+                        <select id="mantTipo" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                            <option>Recalibración</option>
+                            <option>Reemplazo de sensor</option>
+                            <option>Limpieza</option>
+                            <option>Mudanza/Reubicación</option>
+                            <option>Instalación</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Cargado por</label>
+                        <input type="text" id="mantCargadoPor" placeholder="Tu nombre" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="font-medium text-xs text-slate-400 uppercase tracking-wide">Descripción</label>
+                    <textarea id="mantDescripcion" rows="2" placeholder="Ej: se recalibró el sensor de temperatura, offset de +0.5°C detectado en banco de pruebas." class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-sm text-white outline-none focus:border-sky-500"></textarea>
+                </div>
+                <div class="mt-3 flex items-center gap-3">
+                    <button onclick="registrarMantenimiento()" id="btnRegistrarMant" class="bg-orange-700 hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition-all font-bold text-sm">
+                        <i class="fa-solid fa-plus mr-1"></i>Registrar
+                    </button>
+                    <span id="mantFeedback" class="text-xs text-slate-400"></span>
+                </div>
+            </div>
+        </div>
+
         <div id="reportBody">
             <!-- Resumen ejecutivo -->
             <div class="glass p-6 rounded-2xl mb-8 border-l-4 border-sky-500">
                 <h3 class="text-sm font-bold text-sky-400 uppercase tracking-wide mb-3"><i class="fa-solid fa-clipboard-list mr-1"></i>Resultados del Contraste</h3>
                 <ul id="resumenList" class="text-sm text-slate-200 space-y-2 list-disc list-inside"></ul>
+            </div>
+
+            <!-- Historial de mantenimiento dentro del período analizado -->
+            <div id="mantenimientoSection" class="glass p-6 rounded-2xl mb-8 border-l-4 border-violet-500" style="display:none;">
+                <h3 class="text-sm font-bold text-violet-400 uppercase tracking-wide mb-3"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Historial de Mantenimiento en el Período</h3>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead><tr><th>Fecha</th><th>Estación</th><th>Tipo</th><th>Descripción</th><th>Cargado por</th></tr></thead>
+                        <tbody id="mantenimientoTbody"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div id="variablesContainer" class="space-y-8"></div>
@@ -187,6 +252,10 @@
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Separación diurna/nocturna (solo Temperatura)</p>
                         <p>Se promedian por separado las lecturas de horas de radiación solar máxima (11-17h) y de noche (23-05h). Si el sesgo de la estación bajo prueba es notablemente mayor de día que de noche, suele apuntar a sobrecalentamiento por ventilación o protección solar insuficiente en la garita, más que a un desvío general del sensor.</p>
+                    </div>
+                    <div class="md:col-span-2 border-t border-white/10 pt-4">
+                        <p class="font-bold text-white mb-1">Historial de Mantenimiento</p>
+                        <p>Registro de intervenciones (recalibraciones, cambios de sensor, limpieza, mudanzas) sobre cada estación. Si el período analizado incluye alguna, aparece en una tabla propia arriba de los gráficos — útil para explicar saltos o cambios de comportamiento que de otro modo parecerían fallas del sensor.</p>
                     </div>
                     <div class="md:col-span-2 border-t border-white/10 pt-4">
                         <p class="font-bold text-white mb-1">Sugerencias de Control de Calidad (QC)</p>
@@ -705,6 +774,101 @@
         }).then(r => r.json());
     }
 
+    // ============================================================
+    // Historial de mantenimiento (misma backend/token que QC, hoja aparte)
+    // ============================================================
+    function fetchMantenimiento(estacionFiltro) {
+        if (!qcConfigurado()) return Promise.resolve([]);
+        return new Promise((resolve) => {
+            const callbackName = "onMant_" + Date.now();
+            window[callbackName] = (data) => {
+                delete window[callbackName];
+                document.getElementById(callbackName + "_script")?.remove();
+                resolve(data && data.ok ? data.eventos : []);
+            };
+            const script = document.createElement("script");
+            script.id = callbackName + "_script";
+            let src = QC_APPS_SCRIPT_URL + "?callback=" + callbackName + "&token=" + encodeURIComponent(QC_APPS_SCRIPT_TOKEN) + "&recurso=mantenimiento";
+            if (estacionFiltro) src += "&estacion=" + encodeURIComponent(estacionFiltro);
+            script.src = src;
+            script.onerror = () => { delete window[callbackName]; resolve([]); };
+            document.body.appendChild(script);
+        });
+    }
+
+    function toggleFormMantenimiento() {
+        const form = document.getElementById('formMantenimiento');
+        const icon = document.getElementById('iconFormMantenimiento');
+        const visible = form.style.display !== 'none';
+        form.style.display = visible ? 'none' : 'block';
+        icon.classList.toggle('fa-chevron-down', visible);
+        icon.classList.toggle('fa-chevron-up', !visible);
+        if (!visible) {
+            document.getElementById('mantenimientoNoConfigurado').style.display = qcConfigurado() ? 'none' : 'block';
+            if (!document.getElementById('mantFecha').value) {
+                document.getElementById('mantFecha').value = new Date().toISOString().slice(0, 10);
+            }
+        }
+    }
+
+    async function registrarMantenimiento() {
+        if (!qcConfigurado()) { alert('El backend de QC/Mantenimiento todavía no está configurado (ver apps-script-qc/README.md).'); return; }
+        const estacion = document.getElementById('mantEstacion').value;
+        const fecha = document.getElementById('mantFecha').value;
+        const tipo = document.getElementById('mantTipo').value;
+        const descripcion = document.getElementById('mantDescripcion').value;
+        const cargadoPor = document.getElementById('mantCargadoPor').value;
+        if (!fecha) { alert('Elegí una fecha.'); return; }
+
+        const btn = document.getElementById('btnRegistrarMant');
+        const feedback = document.getElementById('mantFeedback');
+        btn.disabled = true;
+        feedback.textContent = 'Guardando...';
+
+        try {
+            const resp = await fetch(QC_APPS_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ accion: "agregar_mantenimiento", estacion, fecha, tipo, descripcion, cargadoPor, token: QC_APPS_SCRIPT_TOKEN }),
+            }).then(r => r.json());
+
+            if (resp && resp.ok) {
+                feedback.textContent = '✓ Registrado. Si ya generaste un informe que cubre esa fecha, volvé a generarlo para verlo en la tabla.';
+                document.getElementById('mantDescripcion').value = '';
+            } else {
+                feedback.textContent = 'Error: ' + (resp && resp.error ? resp.error : 'desconocido');
+            }
+        } catch (e) {
+            feedback.textContent = 'Error de conexión: ' + e.message;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function renderMantenimiento(eventos, startStr, endStr) {
+        const section = document.getElementById('mantenimientoSection');
+        const tbody = document.getElementById('mantenimientoTbody');
+        const start = new Date(startStr), end = new Date(endStr);
+
+        const enPeriodo = eventos
+            .filter(e => { const d = new Date(e.fecha); return !isNaN(d) && d >= start && d <= end; })
+            .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+        if (enPeriodo.length === 0) { section.style.display = 'none'; return []; }
+
+        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'Daza', general: 'General' };
+        tbody.innerHTML = enPeriodo.map(e => `
+            <tr>
+                <td>${e.fecha}</td>
+                <td>${NOMBRES[e.estacion] || e.estacion}</td>
+                <td>${e.tipo}</td>
+                <td>${e.descripcion || ''}</td>
+                <td>${e.cargadoPor || ''}</td>
+            </tr>`).join('');
+        section.style.display = 'block';
+        return enPeriodo;
+    }
+
     // Set de tsIso excluidos, por estación, para la variable actual.
     // qcFlagsPorVariable[varKey] = { prueba: Set, camp: Set, daza: Set }
     let qcFlagsPorVariable = {};
@@ -760,10 +924,10 @@
         document.getElementById('btnCSV').disabled = true;
         document.getElementById('btnPDF').disabled = true;
 
-        const puntosQC = await fetchQCFlags();
+        const [puntosQC, eventosMantenimiento] = await Promise.all([fetchQCFlags(), fetchMantenimiento()]);
         qcFlagsPorVariable = construirExclusionSets(puntosQC);
 
-        const report = { startStr, endStr, res, estacionKey, pruebaLabel: estacionPrueba.label, variables: {} };
+        const report = { startStr, endStr, res, estacionKey, pruebaLabel: estacionPrueba.label, eventosMantenimiento, variables: {} };
 
         for (const varKey of Object.keys(VARS)) {
             const cfg = VARS[varKey];
@@ -884,6 +1048,11 @@
         const pruebaLabel = report.pruebaLabel;
         const rangeLabel = `${report.startStr.replace('T', ' ')} → ${report.endStr.replace('T', ' ')}`;
         resumen.push(`Estación bajo prueba: <strong>${pruebaLabel}</strong>. Período de integración: ${rangeLabel}. Base de estructuración matemática: ${report.res}.`);
+
+        const mantEnPeriodo = renderMantenimiento(report.eventosMantenimiento || [], report.startStr, report.endStr);
+        if (mantEnPeriodo.length > 0) {
+            resumen.push(`Se registraron <strong>${mantEnPeriodo.length}</strong> intervención(es) de mantenimiento durante este período — ver "Historial de Mantenimiento" arriba antes de interpretar saltos o cambios de comportamiento como fallas del sensor.`);
+        }
 
         Object.entries(report.variables).forEach(([varKey, v]) => {
             const statsCamp = pairStats(v.prueba, v.camp);
