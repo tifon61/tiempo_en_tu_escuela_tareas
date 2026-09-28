@@ -85,7 +85,7 @@
                 <a href="comparacionemas.html" class="text-sm font-bold text-sky-400 hover:text-sky-300"><i class="fa-solid fa-arrow-left mr-1"></i> Volver a Comparación de EMAs</a>
             </div>
             <h1 class="text-3xl font-black text-white" id="tituloInforme">Laboratorio de Análisis de EMAs</h1>
-            <p class="text-slate-400 mt-1" id="subtituloInforme">Calibración y contraste estadístico vs Campbell y Daza (Predio FCAG)</p>
+            <p class="text-slate-400 mt-1" id="subtituloInforme">Calibración y contraste estadístico vs Campbell y hardkraft (Predio FCAG)</p>
 
             <div class="glass p-4 rounded-2xl flex flex-col md:flex-row items-center gap-4 mt-6 no-print flex-wrap">
                 <div class="flex items-center gap-2">
@@ -149,7 +149,7 @@
                     <p class="text-slate-400">Canal TS: 2823820.</p>
                 </div>
                 <div class="border-l-4 border-red-500 pl-3">
-                    <p class="font-bold text-white">Daza / Wunderground (Referencia secundaria)</p>
+                    <p class="font-bold text-white">hardkraft / Wunderground (Referencia secundaria)</p>
                     <p class="text-slate-400">ID: ILAPLA66. Predio FCAGLP.</p>
                 </div>
             </div>
@@ -172,7 +172,7 @@
                             <option value="verde">EMA Verde</option>
                             <option value="blanca">EMA Blanca</option>
                             <option value="campbell">Campbell</option>
-                            <option value="daza">Daza</option>
+                            <option value="daza">hardkraft</option>
                             <option value="general">General (predio/otro)</option>
                         </select>
                     </div>
@@ -340,7 +340,7 @@
         document.getElementById('fichaPruebaNombre').innerText = st.label;
         document.getElementById('fichaPruebaDesc').innerText = st.desc;
         document.getElementById('tituloInforme').innerText = `Laboratorio de Análisis: ${st.label}`;
-        document.getElementById('subtituloInforme').innerText = `Calibración y contraste estadístico vs Campbell y Daza (Predio FCAG)`;
+        document.getElementById('subtituloInforme').innerText = `Calibración y contraste estadístico vs Campbell y hardkraft (Predio FCAG)`;
     }
     document.getElementById('estacionPruebaSelect').addEventListener('change', actualizarFichaPrueba);
 
@@ -698,7 +698,7 @@
     }
 
     function rainAnomalyWarning(totals, pruebaLabel) {
-        const entries = [[pruebaLabel, totals.prueba], ['Campbell', totals.camp], ['Daza', totals.daza]];
+        const entries = [[pruebaLabel, totals.prueba], ['Campbell', totals.camp], ['hardkraft', totals.daza]];
         const positive = entries.filter(e => e[1] > 0);
         if (positive.length < 2) return null;
         const max = positive.reduce((a, b) => a[1] > b[1] ? a : b);
@@ -771,7 +771,7 @@
         if (eventos.length === 0) {
             return `<p class="text-xs text-slate-500 mt-4">No se detectaron eventos de precipitación (&gt;${UMBRAL_LLUVIA_MM}mm) en este período.</p>`;
         }
-        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'Daza', general: 'General' };
+        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'hardkraft', general: 'General' };
         const filas = eventos.map((e, i) => {
             const diffTxt = e.totalCamp > 0
                 ? `${((e.totalPrueba - e.totalCamp) / e.totalCamp * 100).toFixed(0)}%`
@@ -798,7 +798,7 @@
                 <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2"><i class="fa-solid fa-cloud-showers-heavy mr-1"></i>Eventos de Precipitación Detectados (${eventos.length})</h4>
                 <div class="overflow-x-auto">
                 <table>
-                    <thead><tr><th>#</th><th>Inicio</th><th>Fin</th><th>${pruebaLabel}</th><th>Campbell</th><th>Daza</th><th>Dif. vs Campbell</th><th>Mantenimiento</th></tr></thead>
+                    <thead><tr><th>#</th><th>Inicio</th><th>Fin</th><th>${pruebaLabel}</th><th>Campbell</th><th>hardkraft</th><th>Dif. vs Campbell</th><th>Mantenimiento</th></tr></thead>
                     <tbody>${filas}</tbody>
                 </table>
                 </div>
@@ -853,7 +853,7 @@
                         ${row('Día', dn.campDay)}${row('Noche', dn.campNight)}
                     </tbody></table>
                     <table><tbody>
-                        <tr><td colspan="2" class="font-bold text-slate-300">Daza</td></tr>
+                        <tr><td colspan="2" class="font-bold text-slate-300">hardkraft</td></tr>
                         ${row('Día', dn.dazaDay)}${row('Noche', dn.dazaNight)}
                     </tbody></table>
                 </div>
@@ -1028,7 +1028,7 @@
 
         if (enPeriodo.length === 0) { section.style.display = 'none'; return []; }
 
-        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'Daza', general: 'General' };
+        const NOMBRES = { verde: 'EMA Verde', blanca: 'EMA Blanca', campbell: 'Campbell', daza: 'hardkraft', general: 'General' };
         tbody.innerHTML = enPeriodo.map(e => `
             <tr>
                 <td>${e.fecha}</td>
@@ -1334,7 +1334,7 @@
             let rainWarning = null;
             let eventosLluvia = [];
             if (v.cfg.accumulated && v.totals) {
-                resumen.push(`Registro hidrométrico: ${pruebaLabel} ${v.totals.prueba.toFixed(1)} mm | Campbell ${v.totals.camp.toFixed(1)} mm | Daza ${v.totals.daza.toFixed(1)} mm.`);
+                resumen.push(`Registro hidrométrico: ${pruebaLabel} ${v.totals.prueba.toFixed(1)} mm | Campbell ${v.totals.camp.toFixed(1)} mm | hardkraft ${v.totals.daza.toFixed(1)} mm.`);
                 rainWarning = rainAnomalyWarning(v.totals, pruebaLabel);
                 if (rainWarning) recomendaciones.push(`Pluviometría: ${rainWarning}`);
 
@@ -1371,7 +1371,7 @@
             }
 
             const excluidosTxt = (v.excludedCount.prueba + v.excludedCount.camp + v.excludedCount.daza) > 0
-                ? `<p class="text-xs text-slate-500 mt-2">QC: ${v.excludedCount.prueba} lectura(s) de ${pruebaLabel}, ${v.excludedCount.camp} de Campbell y ${v.excludedCount.daza} de Daza excluidas por marcado previo.</p>`
+                ? `<p class="text-xs text-slate-500 mt-2">QC: ${v.excludedCount.prueba} lectura(s) de ${pruebaLabel}, ${v.excludedCount.camp} de Campbell y ${v.excludedCount.daza} de hardkraft excluidas por marcado previo.</p>`
                 : '';
 
             const sectionEl = document.createElement('div');
@@ -1407,21 +1407,21 @@
                         ${statsTable(statsCamp, v.cfg.unit)}
                     </div>
                     <div>
-                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">${pruebaLabel} vs Daza</h4>
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">${pruebaLabel} vs hardkraft</h4>
                         ${statsTable(statsDaza, v.cfg.unit)}
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-4 mt-4 text-center border-t border-white/10 pt-4">
                     <div><p class="card-title">Cobertura ${pruebaLabel}</p><p class="text-xl font-bold text-emerald-400">${compPrueba}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.prueba.length} corte(s) de transmisión</p></div>
                     <div><p class="card-title">Cobertura Campbell</p><p class="text-xl font-bold text-sky-400">${compCamp}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.camp.length} corte(s) de transmisión</p></div>
-                    <div><p class="card-title">Cobertura Daza</p><p class="text-xl font-bold text-red-400">${compDaza}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.daza.length} corte(s) de transmisión</p></div>
+                    <div><p class="card-title">Cobertura hardkraft</p><p class="text-xl font-bold text-red-400">${compDaza}%</p><p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-plug-circle-xmark mr-1"></i>${v.cortesTransmision.daza.length} corte(s) de transmisión</p></div>
                 </div>
                 ${excluidosTxt}
                 ${v.cfg.accumulated && v.totals ? `
                 <div class="grid grid-cols-3 gap-4 mt-4 text-center border-t border-white/10 pt-4">
                     <div><p class="card-title">Total ${pruebaLabel}</p><p class="text-xl font-bold text-emerald-400">${v.totals.prueba.toFixed(1)} mm</p></div>
                     <div><p class="card-title">Total Campbell</p><p class="text-xl font-bold text-sky-400">${v.totals.camp.toFixed(1)} mm</p></div>
-                    <div><p class="card-title">Total Daza</p><p class="text-xl font-bold text-red-400">${v.totals.daza.toFixed(1)} mm</p></div>
+                    <div><p class="card-title">Total hardkraft</p><p class="text-xl font-bold text-red-400">${v.totals.daza.toFixed(1)} mm</p></div>
                 </div>` : ''}
                 ${rainWarning ? `<div class="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-300"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${rainWarning}</div>` : ''}
                 ${v.cfg.accumulated ? eventosLluviaHtml(eventosLluvia, v.cfg.unit, pruebaLabel, report.eventosMantenimiento) : ''}
@@ -1439,7 +1439,7 @@
                     datasets: [
                         { label: pruebaLabel, data: v.prueba, borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 },
                         { label: 'Campbell', data: v.camp, borderColor: '#0ea5e9', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 },
-                        { label: 'Daza', data: v.daza, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 }
+                        { label: 'hardkraft', data: v.daza, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 }
                     ]
                 },
                 options: {
@@ -1470,7 +1470,7 @@
                         datasets: [
                             { label: pruebaLabel, data: v.acum.prueba, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', tension: 0.2, pointRadius: 0, borderWidth: 2, fill: true },
                             { label: 'Campbell', data: v.acum.camp, borderColor: '#0ea5e9', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 },
-                            { label: 'Daza', data: v.acum.daza, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 }
+                            { label: 'hardkraft', data: v.acum.daza, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.2, pointRadius: 0, borderWidth: 2 }
                         ]
                     },
                     options: {
@@ -1524,7 +1524,7 @@
 
     function descargarCSV() {
         if (!lastReport) return;
-        const rows = [['Fecha', 'Resolucion', 'Variable', lastReport.pruebaLabel, 'Campbell', 'Daza']];
+        const rows = [['Fecha', 'Resolucion', 'Variable', lastReport.pruebaLabel, 'Campbell', 'hardkraft']];
         Object.entries(lastReport.variables).forEach(([varKey, v]) => {
             v.labels.forEach((label, i) => {
                 rows.push([label, lastReport.res, v.cfg.label, v.prueba[i] ?? '', v.camp[i] ?? '', v.daza[i] ?? '']);
