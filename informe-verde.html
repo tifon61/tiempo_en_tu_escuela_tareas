@@ -309,15 +309,26 @@
         return isNaN(n) ? null : n;
     }
 
+    // Wunderground: pedimos las lecturas en unidades imperiales (units=e, ver
+    // fetchWUDayObservations) y las convertimos acá, en vez de pedir units=m
+    // directo. El objeto "metric" que devuelve la API viene menos fiel al
+    // dato real del sensor que "imperial" (ya lo habíamos detectado en la
+    // página de la red de estaciones: la temperatura en "metric" viene
+    // redondeada a un entero, y la lluvia acumulada de "metric.precipTotal"
+    // puede quedarse atrás/incompleta) — mismo criterio que esa página.
+    function fAcC(f) { return (f - 32) * 5 / 9; }
+    function inHgAHpa(inHg) { return inHg * 33.8639; }
+    function inAMm(inch) { return inch * 25.4; }
+
     const VARS = {
         temp:   { label: 'Temperatura',      unit: '°C',  campbellField: 1, color: '#f97316', accumulated: false,
-                  dazaExtract: (o) => (o.metric ? parseDazaNum(o.metric.tempAvg) : null) },
+                  dazaExtract: (o) => { const v = o.imperial ? parseDazaNum(o.imperial.tempAvg) : null; return v != null ? fAcC(v) : null; } },
         hum:    { label: 'Humedad',          unit: '%',   campbellField: 4, color: '#0ea5e9', accumulated: false,
                   dazaExtract: (o) => parseDazaNum(o.humidityAvg != null ? o.humidityAvg : o.humidity) },
         pres:   { label: 'Presión',          unit: 'hPa', campbellField: 6, color: '#8b5cf6', accumulated: false,
-                  dazaExtract: (o) => (o.metric ? parseDazaNum(o.metric.pressureMax) : null) },
+                  dazaExtract: (o) => { const v = o.imperial ? parseDazaNum(o.imperial.pressureMax) : null; return v != null ? inHgAHpa(v) : null; } },
         lluvia: { label: 'Lluvia', unit: 'mm',  campbellField: 5, color: '#22c55e', accumulated: true,
-                  dazaExtract: (o) => (o.metric ? parseDazaNum(o.metric.precipTotal) : null) }
+                  dazaExtract: (o) => { const v = o.imperial ? parseDazaNum(o.imperial.precipTotal) : null; return v != null ? inAMm(v) : null; } }
     };
 
     // ============================================================
@@ -509,7 +520,7 @@
     }
 
     async function fetchWUDayObservations(stationId, apiKey, dateStr) {
-        const url = `https://api.weather.com/v2/pws/history/all?stationId=${stationId}&format=json&units=m&date=${dateStr}&apiKey=${apiKey}`;
+        const url = `https://api.weather.com/v2/pws/history/all?stationId=${stationId}&format=json&units=e&date=${dateStr}&apiKey=${apiKey}`;
         try {
             const res = await fetch(url);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -546,8 +557,8 @@
             if (excluded && excluded.has(wuTsKey(o))) return;
             const ts = new Date((o.obsTimeLocal || o.obsTimeUtc).replace(' ', 'T'));
             const dayKey = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())}`;
-            const precipTotalRaw = o.metric ? o.metric.precipTotal : null;
-            const precipTotal = precipTotalRaw != null ? parseFloat(precipTotalRaw) : NaN;
+            const precipTotalRaw = o.imperial ? o.imperial.precipTotal : null;
+            const precipTotal = precipTotalRaw != null ? inAMm(parseFloat(precipTotalRaw)) : NaN;
 
             // Ojo: no descartamos la observación entera solo porque este
             // registro puntual vino sin precipTotal — Wunderground a veces
