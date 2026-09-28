@@ -549,41 +549,48 @@
             const precipTotalRaw = o.metric ? o.metric.precipTotal : null;
             const precipTotal = precipTotalRaw != null ? parseFloat(precipTotalRaw) : NaN;
 
-            if (isNaN(precipTotal)) return;
+            // Ojo: no descartamos la observación entera solo porque este
+            // registro puntual vino sin precipTotal — Wunderground a veces
+            // deja ese campo vacío en un registro individual aunque la
+            // estación haya transmitido normalmente (otros campos sí
+            // vienen). Si lo tratáramos como "no llegó nada", perdemos la
+            // marca de transmisión de esa ventana aunque el dato exista.
             if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-            byDay.get(dayKey).push({ ts, precipTotal });
+            byDay.get(dayKey).push({ ts, precipTotal: isNaN(precipTotal) ? null : precipTotal });
         });
 
         const sortedDays = Array.from(byDay.keys()).sort();
         let previousDaysOffset = 0;
         let lastDayTotal = 0;
-        const bucketsWithData = new Set();
+        const bucketsTransmitidos = new Set(); // llegó ALGUNA observación de la estación en esa ventana
+        const bucketsConValor = new Set();      // esa observación además traía un precipTotal válido
 
         sortedDays.forEach((dayKey, idx) => {
             if (idx > 0) previousDaysOffset += lastDayTotal;
             const dayObs = byDay.get(dayKey).sort((a, b) => a.ts - b.ts);
-            lastDayTotal = 0;
+            let lastValidThisDay = 0;
 
             dayObs.forEach(o => {
-                const cumulative = previousDaysOffset + o.precipTotal;
-                lastDayTotal = o.precipTotal;
                 const key = formatKey(o.ts, resolution);
-
+                if (buckets.has(key)) bucketsTransmitidos.add(key);
+                if (o.precipTotal == null) return; // transmitió, pero este registro no traía precipTotal
+                lastValidThisDay = o.precipTotal;
                 if (buckets.has(key)) {
-                    buckets.get(key).value = cumulative;
-                    bucketsWithData.add(key);
+                    buckets.get(key).value = previousDaysOffset + o.precipTotal;
+                    bucketsConValor.add(key);
                 }
             });
+
+            lastDayTotal = lastValidThisDay;
         });
 
         const labels = Array.from(buckets.keys());
-        const hasData = labels.map(k => bucketsWithData.has(k));
+        const hasData = labels.map(k => bucketsTransmitidos.has(k));
         const chartData = [];
         let lastKnown = 0;
 
-        labels.forEach((k, i) => {
-            const v = buckets.get(k).value;
-            if (v > 0 || hasData[i]) lastKnown = v;
+        labels.forEach((k) => {
+            if (bucketsConValor.has(k)) lastKnown = buckets.get(k).value;
             chartData.push(lastKnown);
         });
 
